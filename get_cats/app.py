@@ -10,6 +10,8 @@ MILLIS_24_HOURS = 24 * 60 * 60 * 1000  # 24 hours
 NUM_PREVIOUS_WEIGHT_EVENTS = 3
 TZ_LOCAL = timezone('America/New_York')
 
+VISIT_COLLAPSE_MS = 2 * 60 * 1000 # 2 min
+
 def current_milli_time():
     return round(time.time() * 1000)
     
@@ -93,8 +95,6 @@ def get_cats(dynamodb=None):
         today_local = now_local.strftime("%Y.%m.%d")        
         yesterday_local = (now_local - timedelta(days=1)).strftime("%Y.%m.%d")
 
-        print((today_local, yesterday_local))
-
         # store events split by day into cat object
         cat['today_events'] = [e for e in cat_events if e['event_data']['date_local'] == today_local]
         cat['yesterday_events'] = [e for e in cat_events if e['event_data']['date_local'] == yesterday_local]
@@ -112,10 +112,56 @@ def get_cats(dynamodb=None):
         else:
             cat['today_weight'] = cat['yesterday_weight']
 
+        # sort the cat events in chron order
+        cat['today_events'].sort(key=lambda x: x['event_data']['timestamp'])    
+        cat['yesterday_events'].sort(key=lambda x: x['event_data']['timestamp'])    
+
+        # create visits list for today / yesterda
+        cat['today_visits'] = collapse_events_to_visits(cat['today_events'])
+        cat['yesterday_visits'] = collapse_events_to_visits(cat['yesterday_events'])
+
         cats.append(cat)
 
     return cats
 
+
+def collapse_events_to_visits(events):
+    """ events should be ordered already chronologically, this function will consolidate nearby events into visits """
+
+    # if (len(events) == 0):
+    #     return []
+
+    # initialize visits list as empty and last timestamp to zero to force first event to create a visit
+    visits = []
+    visit = { 'end_timestamp': 0 }
+
+    # loop over events and look for visits to collaps
+    for event in events:
+
+        event_ts = event['event_data']['timestamp']
+        distance_ms = event_ts - visit['end_timestamp']
+
+        # event is close, collapse it to current visit
+        if distance_ms <= VISIT_COLLAPSE_MS:
+            visit['events'].append(event)
+            visit['end_timestamp'] = event_ts
+
+        # event is far, start a new visit
+        else:
+            visit = {
+                'start_timestamp': event_ts,
+                'end_timestamp': event_ts,
+                'events': [ event ]
+            }
+            visits.append(visit)
+
+    # loop over visits and reduce size
+    for visit in visits:
+        last_event = visit['events'][-1]
+        visit['elapsed_sec'] = (visit['end_timestamp'] - visit['start_timestamp']) / 1000 + last_event['event_data']['elapsed_sec']
+        visit['events'] = [ e['event_data']['timestamp'] for e in visit['events'] ]
+
+    return visits
 
 def lambda_handler(event, context):
 
@@ -131,5 +177,10 @@ def lambda_handler(event, context):
 
 
 if __name__ == '__main__':
-    json = json.dumps(get_cats())
-    print(json)
+    cats = get_cats()
+    for cat in cats:
+        print(cat['name'])
+        print(len(cat['yesterday_events']))
+        print(len(cat['yesterday_visits']))
+        print(len(cat['today_events']))
+        print(len(cat['today_visits']))
