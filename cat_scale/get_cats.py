@@ -1,35 +1,39 @@
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from pytz import timezone
 
-from manager.events import collapse_events_to_visits
-from manager.query_ddb import query_events, query_for_cats
-from utils import current_milli_time, lambda_result_body, timestamp_to_keys
+from events import get_cat_events
+from visits import collapse_events_to_visits
+from query_ddb import query_for_cats
+from utils import lambda_result_body, TZ_LOCAL
 
-MILLIS_24_HOURS = 24 * 60 * 60 * 1000  # 24 hours
 NUM_PREVIOUS_WEIGHT_EVENTS = 3
-TZ_LOCAL = timezone('America/New_York')
 
 def get_cats(dynamodb=None):
     """ fetch cat data from DynamoDB and add events from yesterday / today """
     if not dynamodb:
         dynamodb = boto3.resource('dynamodb')
 
-    # determine query keys for today and yesterday
-    now = current_milli_time()
-    today_keys = timestamp_to_keys(now)
-    yesterday_keys = timestamp_to_keys(now - MILLIS_24_HOURS)
-    day_before_keys = timestamp_to_keys(now - 2 * MILLIS_24_HOURS)
+    # determine today and yesterday, TZ relative
+    today = datetime.now().astimezone(TZ_LOCAL).replace(hour=0, minute=0, second=0, microsecond=0)
+    today_key = today.strftime("%Y.%m.%d")
+    yesterday = today + timedelta(days=-1)
+    yesterday_key = yesterday.strftime("%Y.%m.%d")
 
-    # get all events for yesterday and today
-    events = query_events({ 'pk': today_keys[0] }, dynamodb)
-    events += query_events({ 'pk': yesterday_keys[0] }, dynamodb)
-    events += query_events({ 'pk': day_before_keys[0] }, dynamodb)
+    # query dynamodb for cats
+    cats = query_for_cats(dynamodb)
 
-    # loop over all cats
-    cats = []
-    for c in query_for_cats(dynamodb):
+    # retrieve cat events
+    get_cat_events(cats, yesterday_key, today_key, dynamodb)
+
+    # calculate split ts
+    offset = today.tzinfo.utcoffset(today)
+    dt = today + offset
+    split_ts = int(dt.astimezone(timezone.utc).timestamp() * 1000)
+
+    # loop over cats and build results
+    results = []
+    for c in cats:
 
         # locate the last defined weight for cat
         defined_weight = sorted([w for w in c['defined_weights']], key=lambda x: x['timestamp'], reverse=True)[0]
@@ -39,19 +43,25 @@ def get_cats(dynamodb=None):
             'defined_weight': defined_weight['weight']
         }
 
-        # locate events for cat sorted in revers chron order
-        cat_events = sorted(
-            [e for e in events if e['cat'] == cat['name']],
-            key=lambda x: x['event_data']['timestamp'],
-            reverse=True)
+        # collapse events to visits for cat
+        visits = collapse_events_to_visits(c['events'], keep_events=True)
 
-        now_local = datetime.now(TZ_LOCAL)
-        today_local = now_local.strftime("%Y.%m.%d")        
-        yesterday_local = (now_local - timedelta(days=1)).strftime("%Y.%m.%d")
+        # build list of original events and visits for cat
+        cat["today_visits"] = []
+        cat["today_events"] = []
+        cat["yesterday_visits"] = []
+        cat["yesterday_events"] = []
 
-        # store events split by day into cat object
-        cat['today_events'] = [e for e in cat_events if e['event_data']['date_local'] == today_local]
-        cat['yesterday_events'] = [e for e in cat_events if e['event_data']['date_local'] == yesterday_local]
+        for visit in visits:
+
+            # determine which type of event this is for
+            if visit['start_timestamp'] >= split_ts:
+                type = 'today'
+            else:
+                type = 'yesterday'
+
+            cat[f"{type}_visits"].append(visit)
+            cat[f"{type}_events"] += visit['events']
 
         # compute yesterday and today's weight
         cat_weight_events = cat['yesterday_events'][:NUM_PREVIOUS_WEIGHT_EVENTS]
@@ -74,9 +84,9 @@ def get_cats(dynamodb=None):
         cat['today_visits'] = collapse_events_to_visits(cat['today_events'])
         cat['yesterday_visits'] = collapse_events_to_visits(cat['yesterday_events'])
 
-        cats.append(cat)
+        results.append(cat)
 
-    return cats
+    return results
 
 
 def lambda_handler(event, context):

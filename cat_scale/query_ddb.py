@@ -1,10 +1,8 @@
 import boto3
 from boto3.dynamodb.conditions import Key
 
-def query_events(keys, dynamodb=None):
+def query_events(keys, dynamodb):
     """ query DynamoDB log table for entries matching keys """
-    if not dynamodb:
-        dynamodb = boto3.resource('dynamodb')
 
     table = dynamodb.Table('cat_scale_event')
     if 'sk' in keys:
@@ -25,13 +23,17 @@ def query_events(keys, dynamodb=None):
 
     return events
 
-def query_for_cats(dynamodb=None):
+def query_for_cats(dynamodb):
     """ query DynamoDB log table for cats """
-    if not dynamodb:
-        dynamodb = boto3.resource('dynamodb')
 
     table = dynamodb.Table('cat_scale_settings')
     response = table.query(
         KeyConditionExpression=Key('setting_type').eq('cat-definition')
     )
-    return response['Items']
+    
+    cats = response['Items']
+
+    # return in a consistent order
+    cats.sort(key=lambda x: x['name'])
+
+    return cats
