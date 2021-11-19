@@ -34,14 +34,14 @@ def lambda_handler(event, context):
 
 if __name__ == '__main__':
     try:
-        cats = get_cat_visits('2021.11.18', '2021.11.18')
+        cats = get_cat_visits('2021.11.19', '2021.11.19')
         
         for cat in cats:
             print(f"{cat['name']} -> {len(cat['visits'])}")
 
             sum_visits = 0
             for v in cat['visits']:
-                 print(f"{v['start_timestamp']}: {v['total_collapsed']} -> {v['elapsed_sec']} sec ... {datetime.utcfromtimestamp(int(v['start_timestamp'] / 1000)).astimezone(TZ_LOCAL)}")
+                 print(f"{v['start_timestamp']}: {v['total_collapsed']} -> {v['elapsed_sec']} sec ... {datetime.utcfromtimestamp(int(v['start_timestamp'] / 1000))}")
                  sum_visits += v['total_collapsed']
 
             print(sum_visits)

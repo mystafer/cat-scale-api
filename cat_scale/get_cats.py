@@ -3,11 +3,13 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from events import get_cat_events
+from intervals import collapse_visits_to_intervals
 from visits import collapse_events_to_visits
 from query_ddb import query_for_cats
 from utils import lambda_result_body, TZ_LOCAL
 
 NUM_PREVIOUS_WEIGHT_EVENTS = 3
+ONE_HOUR = 1 * 60 * 60 * 1000
 
 def get_cats(dynamodb=None):
     """ fetch cat data from DynamoDB and add events from yesterday / today """
@@ -27,9 +29,8 @@ def get_cats(dynamodb=None):
     get_cat_events(cats, yesterday_key, today_key, dynamodb)
 
     # calculate split ts
-    offset = today.tzinfo.utcoffset(today)
-    dt = today + offset
-    split_ts = int(dt.astimezone(timezone.utc).timestamp() * 1000)
+    today_ts = int(today.timestamp() * 1000)
+    yesterday_ts = int(yesterday.timestamp() * 1000)
 
     # loop over cats and build results
     results = []
@@ -45,23 +46,38 @@ def get_cats(dynamodb=None):
 
         # collapse events to visits for cat
         visits = collapse_events_to_visits(c['events'], keep_events=True)
+        intervals = collapse_visits_to_intervals(visits, ONE_HOUR)
 
         # build list of original events and visits for cat
+        cat["today_intervals"] = []
         cat["today_visits"] = []
         cat["today_events"] = []
+        cat["yesterday_intervals"] = []
         cat["yesterday_visits"] = []
         cat["yesterday_events"] = []
 
+        # split visits based on offset_ts
         for visit in visits:
+            # determine which type of event this is for
+            visit_ts = visit['start_timestamp']
+            if visit_ts >= today_ts:
+                cat["today_visits"].append(visit)
+                cat["today_events"] += visit['events']
+            elif visit_ts >= yesterday_ts:
+                cat["yesterday_visits"].append(visit)
+                cat["yesterday_events"] += visit['events']
+
+
+        # # split intervals based on original timestamp as they are already offset
+        # today_ts = int(today.timestamp() * 1000)
+        for interval in intervals:
 
             # determine which type of event this is for
-            if visit['start_timestamp'] >= split_ts:
-                type = 'today'
-            else:
-                type = 'yesterday'
-
-            cat[f"{type}_visits"].append(visit)
-            cat[f"{type}_events"] += visit['events']
+            tick_ts = interval['tick']
+            if tick_ts >= today_ts:
+                cat["today_intervals"].append(interval)
+            elif tick_ts >= yesterday_ts:
+                cat["yesterday_intervals"].append(interval)
 
         # compute yesterday and today's weight
         cat_weight_events = cat['yesterday_events'][:NUM_PREVIOUS_WEIGHT_EVENTS]
@@ -101,5 +117,7 @@ if __name__ == '__main__':
         print(cat['name'])
         print(len(cat['yesterday_events']))
         print(len(cat['yesterday_visits']))
+        print(len(cat['yesterday_intervals']))
         print(len(cat['today_events']))
         print(len(cat['today_visits']))
+        print(len(cat['today_intervals']))

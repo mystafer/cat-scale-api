@@ -5,13 +5,13 @@ from query_ddb import query_for_cats
 from events import get_cat_events
 from intervals import collapse_visits_to_intervals, DEFAULT_VISIT_INTERVAL_COLLAPSE_MS
 from visits import collapse_events_to_visits
-from utils import lambda_result_body, TZ_LOCAL
+from utils import lambda_result_body, parse_local_date_key, TZ_LOCAL
 
-def get_cat_intervals(start_date, end_date, collapse_ms):
+def get_cat_intervals(start_date_s, end_date_s, collapse_ms):
     dynamodb = boto3.resource('dynamodb')
 
     cats = query_for_cats(dynamodb)
-    get_cat_events(cats, start_date, end_date, dynamodb)
+    get_cat_events(cats, start_date_s, end_date_s, dynamodb)
 
     for cat in cats:
         cat['visits'] = collapse_events_to_visits(cat['events'])
@@ -48,7 +48,7 @@ if __name__ == '__main__':
 
             sum_visits = 0
             for v in cat['intervals']:
-                 print(f"{v['tick']}: {v['total_collapsed']} -> {v['elapsed_sec']} sec ... {datetime.utcfromtimestamp(int(v['tick'] / 1000)).astimezone(TZ_LOCAL)}")
+                 print(f"{v['tick']}: {v['total_collapsed']} -> {v['elapsed_sec']} sec ... {datetime.utcfromtimestamp(int(v['tick'] / 1000))}")
                  sum_visits += v['total_collapsed']
 
             print(sum_visits)
