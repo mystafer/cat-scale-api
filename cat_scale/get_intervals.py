@@ -7,7 +7,7 @@ from intervals import collapse_visits_to_intervals, DEFAULT_VISIT_INTERVAL_COLLA
 from visits import collapse_events_to_visits
 from utils import lambda_result_body, parse_local_date_key, TZ_LOCAL
 
-def get_cat_intervals(start_date_s, end_date_s, collapse_ms):
+def get_cat_intervals(start_date_s, end_date_s, collapse_ms=DEFAULT_VISIT_INTERVAL_COLLAPSE_MS):
     dynamodb = boto3.resource('dynamodb')
 
     cats = query_for_cats(dynamodb)
@@ -16,6 +16,9 @@ def get_cat_intervals(start_date_s, end_date_s, collapse_ms):
     for cat in cats:
         cat['visits'] = collapse_events_to_visits(cat['events'])
         cat['intervals'] = collapse_visits_to_intervals(cat['visits'], collapse_ms)
+
+        print(f"visits count: {len(cat['visits'])}")
+        print(f"intervals count: {len(cat['intervals'])}")
 
     return cats
 
@@ -41,15 +44,17 @@ def lambda_handler(event, context):
 if __name__ == '__main__':
     try:
         TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000 # 24 hours
-        cats = get_cat_intervals('2021.11.18', '2021.11.19', TWENTY_FOUR_HOURS)
+        ONE_HOUR = 1 * 60 * 60 * 1000 # 1 hour
+        cats = get_cat_intervals('2021.11.19', '2021.11.19', TWENTY_FOUR_HOURS)
         
         for cat in cats:
-            print(f"{cat['name']} -> {len(cat['visits'])}")
+            print(f"{cat['name']} -> {len(cat['visits'])} -> {len(cat['intervals'])}")
 
             sum_visits = 0
             for v in cat['intervals']:
-                 print(f"{v['tick']}: {v['total_collapsed']} -> {v['elapsed_sec']} sec ... {datetime.utcfromtimestamp(int(v['tick'] / 1000))}")
-                 sum_visits += v['total_collapsed']
+                dt = datetime.utcfromtimestamp(int(v['tick'] / 1000))
+                print(f"{v['tick']}: {v['total_collapsed']} -> {v['elapsed_sec']} sec ... {dt}")
+                sum_visits += v['total_collapsed']
 
             print(sum_visits)
 

@@ -19,7 +19,7 @@ def get_cats(dynamodb=None):
     # determine today and yesterday, TZ relative
     today = datetime.now().astimezone(TZ_LOCAL).replace(hour=0, minute=0, second=0, microsecond=0)
     today_key = today.strftime("%Y.%m.%d")
-    yesterday = today + timedelta(days=-1)
+    yesterday = (today + timedelta(days=-1)).replace(hour=0, minute=0, second=0, microsecond=0)
     yesterday_key = yesterday.strftime("%Y.%m.%d")
 
     # query dynamodb for cats
@@ -31,6 +31,10 @@ def get_cats(dynamodb=None):
     # calculate split ts
     today_ts = int(today.timestamp() * 1000)
     yesterday_ts = int(yesterday.timestamp() * 1000)
+
+    print(f"Today: {today} ... {today.astimezone(timezone.utc)}")
+    print(f"Yesterday: {yesterday}")
+    print(f"Today Key: {today_key}")
 
     # loop over cats and build results
     results = []
@@ -56,7 +60,7 @@ def get_cats(dynamodb=None):
         cat["yesterday_visits"] = []
         cat["yesterday_events"] = []
 
-        # split visits based on offset_ts
+        # split visits
         for visit in visits:
             # determine which type of event this is for
             visit_ts = visit['start_timestamp']
@@ -67,17 +71,18 @@ def get_cats(dynamodb=None):
                 cat["yesterday_visits"].append(visit)
                 cat["yesterday_events"] += visit['events']
 
-
-        # # split intervals based on original timestamp as they are already offset
-        # today_ts = int(today.timestamp() * 1000)
+        # split intervals
         for interval in intervals:
 
             # determine which type of event this is for
-            tick_ts = interval['tick']
-            if tick_ts >= today_ts:
+            interval_ts = interval['tick']
+
+            if interval_ts >= today_ts:
                 cat["today_intervals"].append(interval)
-            elif tick_ts >= yesterday_ts:
+            elif interval_ts >= yesterday_ts:
                 cat["yesterday_intervals"].append(interval)
+            else:
+                print(f"yesterday {yesterday_ts} - today {today_ts}: {interval_ts}")
 
         # compute yesterday and today's weight
         cat_weight_events = cat['yesterday_events'][:NUM_PREVIOUS_WEIGHT_EVENTS]
@@ -102,6 +107,16 @@ def get_cats(dynamodb=None):
 
         results.append(cat)
 
+    for cat in results:
+        print("\n")
+        print(cat['name'])
+        print(len(cat['yesterday_events']))
+        print(len(cat['yesterday_visits']))
+        print(len(cat['yesterday_intervals']))
+        print(len(cat['today_events']))
+        print(len(cat['today_visits']))
+        print(len(cat['today_intervals']))
+
     return results
 
 
@@ -114,6 +129,7 @@ def lambda_handler(event, context):
 if __name__ == '__main__':
     cats = get_cats()
     for cat in cats:
+        print("\n")
         print(cat['name'])
         print(len(cat['yesterday_events']))
         print(len(cat['yesterday_visits']))
