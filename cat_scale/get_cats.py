@@ -32,10 +32,6 @@ def get_cats(dynamodb=None):
     today_ts = int(today.timestamp() * 1000)
     yesterday_ts = int(yesterday.timestamp() * 1000)
 
-    print(f"Today: {today} ... {today.astimezone(timezone.utc)}")
-    print(f"Yesterday: {yesterday}")
-    print(f"Today Key: {today_key}")
-
     # loop over cats and build results
     results = []
     for c in cats:
@@ -81,8 +77,6 @@ def get_cats(dynamodb=None):
                 cat["today_intervals"].append(interval)
             elif interval_ts >= yesterday_ts:
                 cat["yesterday_intervals"].append(interval)
-            else:
-                print(f"yesterday {yesterday_ts} - today {today_ts}: {interval_ts}")
 
         # compute yesterday and today's weight
         cat_weight_events = cat['yesterday_events'][:NUM_PREVIOUS_WEIGHT_EVENTS]
@@ -106,16 +100,6 @@ def get_cats(dynamodb=None):
         cat['yesterday_visits'] = collapse_events_to_visits(cat['yesterday_events'])
 
         results.append(cat)
-
-    for cat in results:
-        print("\n")
-        print(cat['name'])
-        print(len(cat['yesterday_events']))
-        print(len(cat['yesterday_visits']))
-        print(len(cat['yesterday_intervals']))
-        print(len(cat['today_events']))
-        print(len(cat['today_visits']))
-        print(len(cat['today_intervals']))
 
     return results
 

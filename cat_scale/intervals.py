@@ -18,17 +18,13 @@ def collapse_visits_to_intervals(visits, interval_collapse_ms=DEFAULT_VISIT_INTE
     dt = datetime.utcfromtimestamp(int(first_visit['start_timestamp']/1000))
     dt = dt.astimezone(TZ_LOCAL)
     dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
-    # dt += dt.tzinfo.utcoffset(dt)
     dt += timedelta(days=-1)
-    print(f"collapse_visits_to_intervals start {dt}")
     start_ts = int(dt.timestamp() * 1000)
 
     dt = datetime.utcfromtimestamp(int(last_visit['end_timestamp']/1000))
     dt = dt.astimezone(TZ_LOCAL)
     dt = dt.replace(hour=0, minute=0, second=0, microsecond=0)
-    # dt += dt.tzinfo.utcoffset(dt)
     dt += timedelta(days=2)
-    print(f"collapse_visits_to_intervals end {dt}")
     end_ts = int(dt.timestamp() * 1000)
 
     # skip visits before starting tick
@@ -38,7 +34,6 @@ def collapse_visits_to_intervals(visits, interval_collapse_ms=DEFAULT_VISIT_INTE
         if start_ts <= next_visit['start_timestamp']:
             break
 
-        print(f"skip {start_ts}")
         next_visit = remaining_visits.pop(0)
 
     # loop over tick markers and collapse visits to nearest ticks

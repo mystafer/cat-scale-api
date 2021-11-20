@@ -19,17 +19,12 @@ def get_cat_events(cats, start_date_s, end_date_s, dynamodb):
     end_date = end_date_local.replace(tzinfo=None)
     end_date -= TZ_LOCAL.utcoffset(end_date)
 
-    print(f" query start date {start_date_s} => {start_date_local} ... {start_date}")
-    print(f" query end date {end_date_s} => {end_date_local} ... {end_date}")
-
     # get all events in range, include one day prior and after to ensure all events queried
     events = []
     date = start_date - timedelta(days=1)
     last_date = end_date + timedelta(days=1, seconds=1)
-    print(f" last date {last_date}")
     while date <= last_date:
         query_key = date_to_query_key(date)
-        print(f" query date {query_key}")
         events += query_events(query_key, dynamodb)
         date += timedelta(days=1)
 
@@ -39,14 +34,8 @@ def get_cat_events(cats, start_date_s, end_date_s, dynamodb):
         # locate events for cat sorted in revers chron order
         start_ts = int(start_date.timestamp() * 1000)
         end_ts = int(end_date.timestamp() * 1000)
-        print(f"timestamps start: {start_date}->{start_ts}")
-        print(f"timestamps end: {end_date}->{end_ts}")
         cat_events = sorted(
             [e for e in events if e['cat'] == cat['name'] and (start_ts <= get_local_ts_for_event_ts(e) < end_ts) ],
             key=lambda x: x['event_data']['timestamp'])
-
-        for event in [e for e in events if e['cat'] == cat['name'] and get_local_ts_for_event_ts(e) >= end_ts ]:
-            ts = get_local_ts_for_event_ts(event)
-            print(f"Skipped {get_datetime_for_event_ts(event)} -> {ts} ... {ts-end_ts}")
 
         cat['events'] = cat_events

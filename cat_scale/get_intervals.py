@@ -17,9 +17,6 @@ def get_cat_intervals(start_date_s, end_date_s, collapse_ms=DEFAULT_VISIT_INTERV
         cat['visits'] = collapse_events_to_visits(cat['events'])
         cat['intervals'] = collapse_visits_to_intervals(cat['visits'], collapse_ms)
 
-        print(f"visits count: {len(cat['visits'])}")
-        print(f"intervals count: {len(cat['intervals'])}")
-
     return cats
 
 

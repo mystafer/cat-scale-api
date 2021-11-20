@@ -45,10 +45,5 @@ def get_datetime_for_event_ts(event):
     dt_corrected = (dt_utc + TZ_LOCAL.utcoffset(dt_utc))
     return dt_corrected
 
-# def get_utc_ts_for_event_ts(event):
-#     timestamp = event['event_data']['timestamp']
-#     dt_utc = datetime.utcfromtimestamp(timestamp / 1000)
-#     return int(dt_utc.timestamp() * 1000)
-
 def get_local_ts_for_event_ts(event):
     return int(get_datetime_for_event_ts(event).timestamp() * 1000)
